@@ -536,6 +536,32 @@ export default class ControlsTest extends React.Component<IControlsTestProps, IC
           resolveDelay={200} />
 
         <PeoplePicker context={this.props.context}
+          titleText="People Picker (include guest users)"
+          personSelectionLimit={5}
+          showtooltip={true}
+          isRequired={true}
+          selectedItems={this._getPeoplePickerItems}
+          showHiddenInUI={false}
+          principalTypes={[PrincipalType.User]}
+          suggestionsLimit={5}
+          resolveDelay={200}
+          placeholder={'Select a person'} 
+          allowGuests={true} />
+
+        <PeoplePicker context={this.props.context}
+          titleText="People Picker (no guest users)"
+          personSelectionLimit={5}
+          showtooltip={true}
+          isRequired={true}
+          selectedItems={this._getPeoplePickerItems}
+          showHiddenInUI={false}
+          principalTypes={[PrincipalType.User]}
+          suggestionsLimit={5}
+          resolveDelay={200}
+          placeholder={'Select a person'} 
+          allowGuests={false} />          
+
+        <PeoplePicker context={this.props.context}
           titleText="People Picker (disabled)"
           disabled={true}
           showtooltip={true}

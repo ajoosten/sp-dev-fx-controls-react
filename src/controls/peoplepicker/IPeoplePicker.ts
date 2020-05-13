@@ -98,6 +98,10 @@ export interface IPeoplePickerProps {
    * Placeholder to be displayed in an empty term picker
    */
   placeholder?: string;
+  /**
+   * Is it allowed to select guest users?
+   */
+  allowGuests?: boolean;  
 }
 
 export interface IPeoplePickerState {

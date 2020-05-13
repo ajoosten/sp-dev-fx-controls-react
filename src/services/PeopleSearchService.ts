@@ -55,7 +55,7 @@ export default class SPPeopleSearchService {
     if (Environment.type === EnvironmentType.Local) {
       return 1;
     } else {
-      const groups = await this.searchTenant(siteUrl, groupName, 1, [PrincipalType.SharePointGroup], false, 0);
+      const groups = await this.searchTenant(siteUrl, groupName, 1, [PrincipalType.SharePointGroup], null, false, 0);
       return (groups && groups.length > 0) ? parseInt(groups[0].id) : null;
     }
   }
@@ -63,13 +63,13 @@ export default class SPPeopleSearchService {
   /**
    * Search person by its email or login name
    */
-  public async searchPersonByEmailOrLogin(email: string, principalTypes: PrincipalType[], siteUrl: string = null, groupId: number = null, ensureUser: boolean = false): Promise<IPeoplePickerUserItem> {
+  public async searchPersonByEmailOrLogin(email: string, principalTypes: PrincipalType[], allowGuests: boolean, siteUrl: string = null, groupId: number = null, ensureUser: boolean = false): Promise<IPeoplePickerUserItem> {
     if (Environment.type === EnvironmentType.Local) {
       // If the running environment is local, load the data from the mock
       const mockUsers = await this.searchPeopleFromMock(email);
       return (mockUsers && mockUsers.length > 0) ? mockUsers[0] : null;
     } else {
-      const userResults = await this.searchTenant(siteUrl, email, 1, principalTypes, ensureUser, groupId);
+      const userResults = await this.searchTenant(siteUrl, email, 1, principalTypes, allowGuests, ensureUser, groupId);
       return (userResults && userResults.length > 0) ? userResults[0] : null;
     }
   }
@@ -77,12 +77,12 @@ export default class SPPeopleSearchService {
   /**
    * Search All Users from the SharePoint People database
    */
-  public async searchPeople(query: string, maximumSuggestions: number, principalTypes: PrincipalType[], siteUrl: string = null, groupId: number = null, ensureUser: boolean = false): Promise<IPeoplePickerUserItem[]> {
+  public async searchPeople(query: string, maximumSuggestions: number, principalTypes: PrincipalType[], allowGuests: boolean, siteUrl: string = null, groupId: number = null, ensureUser: boolean = false): Promise<IPeoplePickerUserItem[]> {
     if (Environment.type === EnvironmentType.Local) {
       // If the running environment is local, load the data from the mock
       return this.searchPeopleFromMock(query);
     } else {
-      return await this.searchTenant(siteUrl, query, maximumSuggestions, principalTypes, ensureUser, groupId);
+      return await this.searchTenant(siteUrl, query, maximumSuggestions, principalTypes, allowGuests, ensureUser, groupId);
     }
   }
 
@@ -163,7 +163,7 @@ export default class SPPeopleSearchService {
   /**
    * Tenant search
    */
-  private async searchTenant(siteUrl: string, query: string, maximumSuggestions: number, principalTypes: PrincipalType[], ensureUser: boolean, groupId: number): Promise<IPeoplePickerUserItem[]> {
+  private async searchTenant(siteUrl: string, query: string, maximumSuggestions: number, principalTypes: PrincipalType[], allowGuests: boolean, ensureUser: boolean, groupId: number): Promise<IPeoplePickerUserItem[]> {
     try {
       // If the running env is SharePoint, loads from the peoplepicker web service
       const userRequestUrl: string = `${siteUrl || this.context.pageContext.web.absoluteUrl}/_api/SP.UI.ApplicationPages.ClientPeoplePickerWebServiceInterface.clientPeoplePickerSearchUser`;
@@ -208,14 +208,38 @@ export default class SPPeopleSearchService {
             values = JSON.parse(userDataResp.value);
           }
 
-          // Filter out "UNVALIDATED_EMAIL_ADDRESS"
-          values = values.filter(v => !(v.EntityData && v.EntityData.PrincipalType && v.EntityData.PrincipalType === "UNVALIDATED_EMAIL_ADDRESS"));
+          if (allowGuests) {
+
+            // Guests who don't exist on the site will have an Unvalidated Email Address
+            // Those emails need to be ensured to check if those refer to existing guest accounts
+            const unknownUsers = values.filter(v => v.EntityData && v.EntityData.PrincipalType && v.EntityData.PrincipalType === "UNVALIDATED_EMAIL_ADDRESS");
+            values = values.filter(v => !(v.EntityData && v.EntityData.PrincipalType && v.EntityData.PrincipalType === "UNVALIDATED_EMAIL_ADDRESS"));
+            
+            console.log(`${query} | Known: ${values.length} | Unknown: ${unknownUsers.length}`);
+
+            for (const unknownUser of unknownUsers) {
+                console.log(`Unknown user key: ${unknownUser.Key}`);
+                const id = await this.ensureUser(unknownUser.Key);
+                if (id) {
+                    unknownUser.LoginName = unknownUser.Key;
+                    unknownUser.Key = id;
+                    values.push(unknownUser);
+                }
+            }
+
+          } else {
+            // Filter out all unknown email addresses
+            // Filter out the guest accounts if allowGuest = false (null values are backwards compatible)
+            values = values.filter(v => !(v.EntityData && v.EntityData.PrincipalType && 
+                (v.EntityData.PrincipalType === "UNVALIDATED_EMAIL_ADDRESS" || (allowGuests === false && v.EntityData.PrincipalType === "GUEST_USER" ))));
+          }
 
           // Check if local user IDs need to be retrieved
           if (ensureUser) {
             for (const value of values) {
               // Only ensure the user if it is not a SharePoint group
-              if (!value.EntityData || (value.EntityData && typeof value.EntityData.SPGroupID === "undefined")) {
+              // New guest users will already be ensured, those will have a number as key
+              if (isNaN(value.Key) && (!value.EntityData || (value.EntityData && typeof value.EntityData.SPGroupID === "undefined"))) {
                 const id = await this.ensureUser(value.Key);
                 value.LoginName = value.Key;
                 value.Key = id;
