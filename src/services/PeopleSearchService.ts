@@ -214,11 +214,8 @@ export default class SPPeopleSearchService {
             // Those emails need to be ensured to check if those refer to existing guest accounts
             const unknownUsers = values.filter(v => v.EntityData && v.EntityData.PrincipalType && v.EntityData.PrincipalType === "UNVALIDATED_EMAIL_ADDRESS");
             values = values.filter(v => !(v.EntityData && v.EntityData.PrincipalType && v.EntityData.PrincipalType === "UNVALIDATED_EMAIL_ADDRESS"));
-            
-            console.log(`${query} | Known: ${values.length} | Unknown: ${unknownUsers.length}`);
 
             for (const unknownUser of unknownUsers) {
-                console.log(`Unknown user key: ${unknownUser.Key}`);
                 const id = await this.ensureUser(unknownUser.Key);
                 if (id) {
                     unknownUser.LoginName = unknownUser.Key;
